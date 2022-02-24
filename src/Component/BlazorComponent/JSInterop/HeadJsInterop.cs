@@ -24,7 +24,7 @@ namespace BlazorComponent
         /// <param name="text"></param>
         public void InsertAdjacentHTML(string position, string text)
         {
-            _jsRuntime.InvokeAsync<string>(JsInteropConstants.InsertAdjacentHTML, position, text);
+            _ = _jsRuntime.InvokeAsync<string>(JsInteropConstants.InsertAdjacentHTML, position, text);
         }
     }
 }
