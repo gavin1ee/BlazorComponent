@@ -19,7 +19,5 @@ namespace BlazorComponent
 
         [Parameter]
         public virtual string Tag { get; set; } = "div";
-
-        private string GutterStyle { get; set; }
     }
 }
