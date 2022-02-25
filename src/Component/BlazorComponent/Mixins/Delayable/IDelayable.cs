@@ -9,7 +9,7 @@ public interface IDelayable
 
     int CloseDelay { get; set; }
 
-    Task RunOpenDelay(Func<Task> cb = null);
+    Task RunOpenDelayAsync(Func<Task> cb = null);
 
-    Task RunCloseDelay(Func<Task> cb = null);
+    Task RunCloseDelayAsync(Func<Task> cb = null);
 }

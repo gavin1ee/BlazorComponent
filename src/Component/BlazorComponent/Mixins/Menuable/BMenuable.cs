@@ -7,19 +7,96 @@ namespace BlazorComponent;
 public abstract class BMenuable : BActivatable, IMenuable, IAsyncDisposable
 {
     private readonly int _stackMinZIndex = 6;
-
     private bool _delayIsActive;
-
     private double _absoluteX;
     private double _absoluteY;
-
     // just record the last triggered event
-    private InternalListenerEvent _internalListenerEvent = InternalListenerEvent.None; 
-
+    private InternalListenerEvent _internalListenerEvent = InternalListenerEvent.None;
     private bool _showContentCompleted;
-
     private bool _hasWindow;
     private WindowAndDocument _windowAndDocument;
+
+    [Parameter]
+    public bool Absolute { get; set; }
+
+    [Parameter]
+    public bool AllowOverflow { get; set; }
+
+    [Parameter]
+    public string Attach { get; set; }
+
+    [Parameter]
+    public bool Bottom { get; set; }
+
+    [Parameter]
+    public string ContentClass { get; set; }
+
+    [Parameter]
+    public bool Left { get; set; }
+
+    [Parameter]
+    public StringNumber MaxWidth { get; set; }
+
+    [Parameter]
+    public StringNumber MinWidth { get; set; }
+
+    [Parameter]
+    public StringNumber NudgeBottom { get; set; }
+
+    [Parameter]
+    public StringNumber NudgeLeft { get; set; }
+
+    [Parameter]
+    public StringNumber NudgeRight { get; set; }
+
+    [Parameter]
+    public StringNumber NudgeTop { get; set; }
+
+    [Parameter]
+    public StringNumber NudgeWidth { get; set; }
+
+    [Parameter]
+    public bool OffsetOverflow { get; set; }
+
+    [Parameter]
+    public bool OffsetX { get; set; }
+
+    [Parameter]
+    public bool OffsetY { get; set; }
+
+    [Parameter]
+    public bool OpenOnClick { get; set; } = true;
+
+    [Parameter]
+    public double? PositionX { get; set; }
+
+    [Parameter]
+    public double? PositionY { get; set; }
+
+    [Parameter]
+    public bool Right { get; set; }
+
+    [Parameter]
+    public bool Top { get; set; }
+
+    [Parameter]
+    public override bool Value
+    {
+        get => IsActive;
+        set
+        {
+            //We recover this as no activator mode need
+            //We will remove this when menuable been refactored
+            _ = ShowLazyContent();
+            IsActive = value;
+        }
+    }
+
+    [Parameter]
+    public StringNumber ZIndex { get; set; }
+
+    [Inject]
+    public DomEventJsInterop DomEventJsInterop { get; set; }
 
     protected (Position activator, Position content) Dimensions = new(new Position(), new Position());
 
@@ -131,92 +208,12 @@ public abstract class BMenuable : BActivatable, IMenuable, IAsyncDisposable
 
     public bool ShowContent { get; set; }
 
-    [Inject]
-    public DomEventJsInterop DomEventJsInterop { get; set; }
-
-    [Parameter]
-    public bool Absolute { get; set; }
-
-    [Parameter]
-    public bool AllowOverflow { get; set; }
-
-    [Parameter]
-    public string Attach { get; set; }
-
-    [Parameter]
-    public bool Bottom { get; set; }
-
-    [Parameter]
-    public string ContentClass { get; set; }
-
-    [Parameter]
-    public bool Left { get; set; }
-
-    [Parameter]
-    public StringNumber MaxWidth { get; set; }
-
-    [Parameter]
-    public StringNumber MinWidth { get; set; }
-
-    [Parameter]
-    public StringNumber NudgeBottom { get; set; }
-
-    [Parameter]
-    public StringNumber NudgeLeft { get; set; }
-
-    [Parameter]
-    public StringNumber NudgeRight { get; set; }
-
-    [Parameter]
-    public StringNumber NudgeTop { get; set; }
-
-    [Parameter]
-    public StringNumber NudgeWidth { get; set; }
-
-    [Parameter]
-    public bool OffsetOverflow { get; set; }
-
-    [Parameter]
-    public bool OffsetX { get; set; }
-
-    [Parameter]
-    public bool OffsetY { get; set; }
-
-    [Parameter]
-    public bool OpenOnClick { get; set; } = true;
-
-    [Parameter]
-    public double? PositionX { get; set; }
-
-    [Parameter]
-    public double? PositionY { get; set; }
-
-    [Parameter]
-    public bool Right { get; set; }
-
-    [Parameter]
-    public bool Top { get; set; }
-
-    [Parameter]
-    public override bool Value
-    {
-        get => IsActive;
-        set
-        {
-            //We recover this as no activator mode need
-            //We will remove this when menuable been refactored
-            _ = ShowLazyContent();
-            IsActive = value;
-        }
-    }
-
-    [Parameter]
-    public StringNumber ZIndex { get; set; }
+    public virtual string AttachedSelector => Attach;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         await base.OnAfterRenderAsync(firstRender);
-        
+
         if (firstRender)
         {
             _windowAndDocument = await RefreshWindowAndDocument();
@@ -227,6 +224,24 @@ public abstract class BMenuable : BActivatable, IMenuable, IAsyncDisposable
                 DomEventJsInterop.AddEventListener<Window>("window", "resize", OnResize, false);
             }
         }
+    }
+
+    private async Task<WindowAndDocument> RefreshWindowAndDocument()
+    {
+        string[] windowProps = { "innerHeight", "innerWidth", "pageXOffset", "pageYOffset" };
+        string[] documentProps = { "clientHeight", "clientWidth", "scrollLeft", "scrollTop" };
+
+        _windowAndDocument = await JsInvokeAsync<WindowAndDocument>(JsInteropConstants.GetWindowAndDocumentProps,
+            windowProps, documentProps);
+
+        return _windowAndDocument;
+    }
+
+    private async void OnResize(Window window)
+    {
+        if (!IsActive) return;
+
+        await Task.Run(() => UpdateDimensions());
     }
 
     protected virtual async Task ShowLazyContent()
@@ -255,23 +270,108 @@ public abstract class BMenuable : BActivatable, IMenuable, IAsyncDisposable
 
     protected abstract Task MoveContentTo();
 
-    protected virtual Task Activate(Action lazySetter)
+    protected async Task UpdateDimensions(Action lazySetter = null)
     {
-        lazySetter();
+        await RefreshWindowAndDocument();
+        await CheckActivatorFixed();
+        CheckForPageYOffset();
 
-        return Task.CompletedTask;
+        PageWidth = _windowAndDocument.ClientWidth;
+
+        if (!HasActivator || Absolute)
+        {
+            Dimensions.activator = AbsolutePosition();
+        }
+        else
+        {
+            var activatorElement = GetActivator();
+            var activator = await activatorElement.GetDomInfoAsync();
+
+            Dimensions.activator = await Measure(activatorElement);
+            Dimensions.activator.OffsetLeft = activator?.OffsetLeft ?? 0;
+
+            if (Attach != null)
+            {
+                Dimensions.activator.OffsetTop = activator?.OffsetTop ?? 0;
+            }
+            else
+            {
+                Dimensions.activator.OffsetTop = 0;
+            }
+        }
+
+        var contentElement = Document.GetElementByReference(ContentRef);
+        Dimensions.content = await Measure(contentElement);
+
+        lazySetter?.Invoke();
+
+        InternalZIndex = await CalculateZIndex();
+
+        StateHasChanged();
     }
 
-    public virtual string AttachedSelector => Attach;
-
-    protected string CalcLeft(double menuWidth)
+    private async Task CheckActivatorFixed()
     {
-        return ((StringNumber)(Attach != null ? ComputedLeft : CalcXOverflow(ComputedLeft, menuWidth))).ConvertToUnit();
+        ActivatorFixed = await JsInvokeAsync<bool>(JsInteropConstants.CheckElementFixed, ActivatorSelector);
     }
 
-    protected string CalcTop()
+    private void CheckForPageYOffset()
     {
-        return ((StringNumber)(Attach != null ? ComputedTop : CalcYOverflow(ComputedTop))).ConvertToUnit();
+        if (_hasWindow)
+        {
+            PageYOffset = ActivatorFixed ? 0 : GetOffsetTop();
+        }
+    }
+
+    private double GetOffsetTop()
+    {
+        if (!_hasWindow) return 0;
+
+        return _windowAndDocument.PageYOffset > 0 ? _windowAndDocument.PageYOffset : _windowAndDocument.ScrollTop;
+    }
+
+    private Position AbsolutePosition() => new()
+    {
+        OffsetTop = PositionY ?? _absoluteY,
+        OffsetLeft = PositionX ?? _absoluteX,
+        ScrollHeight = 0,
+        Top = PositionY ?? _absoluteY,
+        Bottom = PositionY ?? _absoluteY,
+        Left = PositionX ?? _absoluteX,
+        Right = PositionX ?? _absoluteX,
+        Height = 0,
+        Width = 0
+    };
+
+    private async Task<Position> Measure(HtmlElement element)
+    {
+        if (element == null || !_hasWindow) return null;
+
+        var originRect = await element.GetBoundingClientRectAsync();
+
+        var rect = new Position(originRect);
+
+        if (Attach != null)
+        {
+            var marginLeft = "margin-left";
+            var marginRight = "margin-right";
+
+            var styles = await element.GetStylesAsync(marginLeft, marginRight);
+
+            // TODO: check parse "2px"
+
+            if (int.TryParse(styles[marginLeft], out var left))
+            {
+                rect!.Left = left;
+            }
+
+            if (int.TryParse(styles[marginRight], out var right))
+            {
+                rect!.Right = right;
+            }
+        }
+
+        return rect;
     }
 
     protected double CalcXOverflow(double left, double menuWidth)
@@ -288,6 +388,13 @@ public abstract class BMenuable : BActivatable, IMenuable, IAsyncDisposable
         }
 
         return left + GetOffsetLeft();
+    }
+
+    private double GetOffsetLeft()
+    {
+        if (!_hasWindow) return 0;
+
+        return _windowAndDocument.PageXOffset > 0 ? _windowAndDocument.PageXOffset : _windowAndDocument.ScrollLeft;
     }
 
     protected double CalcYOverflow(double top)
@@ -317,6 +424,14 @@ public abstract class BMenuable : BActivatable, IMenuable, IAsyncDisposable
         return top < 12 ? 12 : top;
     }
 
+    private double GetInnerHeight()
+    {
+        if (!_hasWindow) return 0;
+
+        return _windowAndDocument.InnerHeight > 0 ? _windowAndDocument.InnerHeight : _windowAndDocument.ClientHeight;
+    }
+
+    //Active
     private async Task CallActivate(Action lazySetter)
     {
         if (!_hasWindow) return;
@@ -324,22 +439,17 @@ public abstract class BMenuable : BActivatable, IMenuable, IAsyncDisposable
         await Activate(lazySetter);
     }
 
+    protected virtual Task Activate(Action lazySetter)
+    {
+        lazySetter();
+
+        return Task.CompletedTask;
+    }
+
+    //Deactivate
     private Task CallDeactivate(Action lazySetter)
     {
         return Deactivate(lazySetter);
-    }
-
-    private void CheckForPageYOffset()
-    {
-        if (_hasWindow)
-        {
-            PageYOffset = ActivatorFixed ? 0 : GetOffsetTop();
-        }
-    }
-
-    private async Task CheckActivatorFixed()
-    {
-        ActivatorFixed = await JsInvokeAsync<bool>(JsInteropConstants.CheckElementFixed, ActivatorSelector);
     }
 
     protected virtual Task Deactivate(Action lazySetter)
@@ -415,204 +525,6 @@ public abstract class BMenuable : BActivatable, IMenuable, IAsyncDisposable
         return listeners;
     }
 
-    protected override Dictionary<string, EventCallback<FocusEventArgs>> GenActivatorFocusListeners()
-    {
-        var listeners = base.GenActivatorFocusListeners();
-
-        ResetListener(ref listeners, InternalListenerEvent.Focus);
-        ResetListener(ref listeners, InternalListenerEvent.Blur);
-
-        return listeners;
-    }
-
-    private double GetInnerHeight()
-    {
-        if (!_hasWindow) return 0;
-
-        return _windowAndDocument.InnerHeight > 0 ? _windowAndDocument.InnerHeight : _windowAndDocument.ClientHeight;
-    }
-
-    private double GetOffsetLeft()
-    {
-        if (!_hasWindow) return 0;
-
-        return _windowAndDocument.PageXOffset > 0 ? _windowAndDocument.PageXOffset : _windowAndDocument.ScrollLeft;
-    }
-
-    private double GetOffsetTop()
-    {
-        if (!_hasWindow) return 0;
-
-        return _windowAndDocument.PageYOffset > 0 ? _windowAndDocument.PageYOffset : _windowAndDocument.ScrollTop;
-    }
-
-    private async void OnResize(Window window)
-    {
-        if (!IsActive) return;
-
-        await Task.Run(() => UpdateDimensions());
-    }
-
-    private async Task<Position> Measure(HtmlElement element)
-    {
-        if (element == null || !_hasWindow) return null;
-
-        var originRect = await element.GetBoundingClientRectAsync();
-
-        var rect = new Position(originRect);
-
-        if (Attach != null)
-        {
-            var marginLeft = "margin-left";
-            var marginRight = "margin-right";
-
-            var styles = await element.GetStylesAsync(marginLeft, marginRight);
-
-            // TODO: check parse "2px"
-
-            if (int.TryParse(styles[marginLeft], out var left))
-            {
-                rect!.Left = left;
-            }
-
-            if (int.TryParse(styles[marginRight], out var right))
-            {
-                rect!.Right = right;
-            }
-        }
-
-        return rect;
-    }
-
-    protected async Task UpdateDimensions(Action lazySetter = null)
-    {
-        await RefreshWindowAndDocument();
-
-        await CheckActivatorFixed();
-
-        CheckForPageYOffset();
-
-        PageWidth = _windowAndDocument.ClientWidth;
-
-        if (!HasActivator || Absolute)
-        {
-            Dimensions.activator = AbsolutePosition();
-        }
-        else
-        {
-            var activatorElement = GetActivator();
-            var activator = await activatorElement.GetDomInfoAsync();
-
-            Dimensions.activator = await Measure(activatorElement);
-            Dimensions.activator.OffsetLeft = activator?.OffsetLeft ?? 0;
-
-            if (Attach != null)
-            {
-                Dimensions.activator.OffsetTop = activator?.OffsetTop ?? 0;
-            }
-            else
-            {
-                Dimensions.activator.OffsetTop = 0;
-            }
-        }
-
-        var contentElement = Document.GetElementByReference(ContentRef);
-        Dimensions.content = await Measure(contentElement);
-
-        lazySetter?.Invoke();
-
-        InternalZIndex = await CalculateZIndex();
-
-        StateHasChanged();
-    }
-
-    private Position AbsolutePosition() => new()
-    {
-        OffsetTop = PositionY ?? _absoluteY,
-        OffsetLeft = PositionX ?? _absoluteX,
-        ScrollHeight = 0,
-        Top = PositionY ?? _absoluteY,
-        Bottom = PositionY ?? _absoluteY,
-        Left = PositionX ?? _absoluteX,
-        Right = PositionX ?? _absoluteX,
-        Height = 0,
-        Width = 0
-    };
-
-    private async Task<int> ActiveZIndex()
-    {
-        return await GetMaxZIndex() + 2;
-    }
-
-    private async Task<int> CalculateZIndex()
-    {
-        if (ZIndex != null)
-        {
-            var (isNumber, number) = ZIndex.TryGetNumber();
-
-            if (isNumber && number > 0)
-            {
-                return Convert.ToInt32(number);
-            }
-        }
-
-        return await ActiveZIndex();
-    }
-
-    private async Task<int> GetMaxZIndex()
-    {
-        var maxZindex = await JsInvokeAsync<int>(JsInteropConstants.GetMenuOrDialogMaxZIndex, new List<ElementReference> { ContentRef }, Ref);
-
-        return maxZindex > _stackMinZIndex ? maxZindex : _stackMinZIndex;
-    }
-
-    private HtmlElement GetContent() => Document.GetElementByReference(ContentRef);
-
-    private async Task<WindowAndDocument> RefreshWindowAndDocument()
-    {
-        string[] windowProps = { "innerHeight", "innerWidth", "pageXOffset", "pageYOffset" };
-        string[] documentProps = { "clientHeight", "clientWidth", "scrollLeft", "scrollTop" };
-
-        _windowAndDocument = await JsInvokeAsync<WindowAndDocument>(JsInteropConstants.GetWindowAndDocumentProps,
-            windowProps, documentProps);
-
-        return _windowAndDocument;
-    }
-
-    private async Task DeleteContent()
-    {
-        try
-        {
-            if (ContentRef.Context != null)
-            {
-                await JsInvokeAsync(JsInteropConstants.DelElementFrom, ContentRef, AttachedSelector);
-            }
-        }
-        catch (Exception e)
-        {
-            // ignored
-        }
-    }
-
-    private void ResetListener<T>(ref Dictionary<string, EventCallback<T>> listeners, InternalListenerEvent @event)
-    {
-        var type = @event.ToString().ToLower();
-
-        if (!listeners.ContainsKey(type)) return;
-
-        var cb = listeners[type];
-
-        listeners[type] = CreateEventCallback<T>(async e =>
-        {
-            _internalListenerEvent = @event;
-
-            if (cb.HasDelegate)
-            {
-                await cb.InvokeAsync(e);
-            }
-        });
-    }
-
     private void ResetListener<T>(
         ref Dictionary<string, (EventCallback<T> listener, EventListenerActions actions)> listeners,
         InternalListenerEvent @event,
@@ -641,6 +553,62 @@ public abstract class BMenuable : BActivatable, IMenuable, IAsyncDisposable
         }), actions);
     }
 
+    protected override Dictionary<string, EventCallback<FocusEventArgs>> GenActivatorFocusListeners()
+    {
+        var listeners = base.GenActivatorFocusListeners();
+
+        ResetListener(ref listeners, InternalListenerEvent.Focus);
+        ResetListener(ref listeners, InternalListenerEvent.Blur);
+
+        return listeners;
+    }
+
+    private void ResetListener<T>(ref Dictionary<string, EventCallback<T>> listeners, InternalListenerEvent @event)
+    {
+        var type = @event.ToString().ToLower();
+
+        if (!listeners.ContainsKey(type)) return;
+
+        var cb = listeners[type];
+
+        listeners[type] = CreateEventCallback<T>(async e =>
+        {
+            _internalListenerEvent = @event;
+
+            if (cb.HasDelegate)
+            {
+                await cb.InvokeAsync(e);
+            }
+        });
+    }
+
+    private async Task<int> CalculateZIndex()
+    {
+        if (ZIndex != null)
+        {
+            var (isNumber, number) = ZIndex.TryGetNumber();
+
+            if (isNumber && number > 0)
+            {
+                return Convert.ToInt32(number);
+            }
+        }
+
+        return await ActiveZIndex();
+    }
+
+    private async Task<int> ActiveZIndex()
+    {
+        return await GetMaxZIndex() + 2;
+    }
+
+    private async Task<int> GetMaxZIndex()
+    {
+        var maxZindex = await JsInvokeAsync<int>(JsInteropConstants.GetMenuOrDialogMaxZIndex, new List<ElementReference> { ContentRef }, Ref);
+
+        return maxZindex > _stackMinZIndex ? maxZindex : _stackMinZIndex;
+    }
+
     public async ValueTask DisposeAsync()
     {
         if (_hasWindow)
@@ -661,6 +629,23 @@ public abstract class BMenuable : BActivatable, IMenuable, IAsyncDisposable
         }
 
         await DeleteContent();
+    }
+
+    private HtmlElement GetContent() => Document.GetElementByReference(ContentRef);
+
+    private async Task DeleteContent()
+    {
+        try
+        {
+            if (ContentRef.Context != null)
+            {
+                await JsInvokeAsync(JsInteropConstants.DelElementFrom, ContentRef, AttachedSelector);
+            }
+        }
+        catch (Exception e)
+        {
+            // ignored
+        }
     }
 
     protected class Position : BoundingClientRect

@@ -12,11 +12,8 @@ namespace BlazorComponent;
 public abstract class BActivatable : BDelayable, IActivatable
 {
     private readonly string _activatorId;
-
     private bool _isActive;
-
     private ElementReference? _externalActivatorRef;
-
     private Dictionary<string, EventCallback<FocusEventArgs>> _focusListeners = new();
     private Dictionary<string, EventCallback<KeyboardEventArgs>> _keyboardListeners = new();
     private Dictionary<string, (EventCallback<MouseEventArgs> listener, EventListenerActions actions)> _mouseListeners = new();
@@ -26,7 +23,36 @@ public abstract class BActivatable : BDelayable, IActivatable
         _activatorId = $"_activator_{Guid.NewGuid()}";
     }
 
-    private string InternalActivatorSelector => $"[{_activatorId}]";
+    [Parameter]
+    public RenderFragment<ActivatorProps> ActivatorContent { get; set; }
+
+    [Parameter]
+    public bool Disabled
+    {
+        get => GetValue<bool>();
+        set => SetValue(value);
+    }
+
+    [Parameter]
+    public bool OpenOnHover { get; set; }
+
+    [Parameter]
+    public bool OpenOnFocus { get; set; }
+
+    [Parameter]
+    public virtual bool Value
+    {
+        get => IsActive;
+        set => IsActive = value;
+    }
+
+    [Parameter]
+    public EventCallback<bool> ValueChanged { get; set; }
+
+    [Inject]
+    public Document Document { get; set; }
+
+    protected string InternalActivatorSelector => $"[{_activatorId}]";
 
     protected string ActivatorSelector => _externalActivatorRef.HasValue
         ? Document.GetElementByReference(_externalActivatorRef.Value).Selector
@@ -61,107 +87,6 @@ public abstract class BActivatable : BDelayable, IActivatable
         }
     }
 
-    [Inject]
-    public Document Document { get; set; }
-
-    [Parameter]
-    public RenderFragment<ActivatorProps> ActivatorContent { get; set; }
-
-    [Parameter]
-    public bool Disabled
-    {
-        get => GetValue<bool>();
-        set => SetValue(value);
-    }
-
-    [Parameter]
-    public bool OpenOnHover { get; set; }
-
-    [Parameter]
-    public bool OpenOnFocus { get; set; }
-
-    [Parameter]
-    public virtual bool Value
-    {
-        get => IsActive;
-        set => IsActive = value;
-    }
-
-    [Parameter]
-    public EventCallback<bool> ValueChanged { get; set; }
-
-    protected override void OnInitialized()
-    {
-        base.OnInitialized();
-
-        Watcher
-            .Watch<bool>(nameof(Disabled), val =>
-            {
-                _ = ResetActivator();
-            });
-    }
-
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (firstRender)
-        {
-            await ResetActivator();
-        }
-    }
-
-    protected virtual async Task Open()
-    {
-        await RunOpenDelay(() => UpdateValue(true));
-    }
-
-    protected virtual async Task Close()
-    {
-        await RunCloseDelay(() => UpdateValue(false));
-    }
-
-    protected virtual Task Toggle()
-    {
-        return UpdateValue(!Value);
-    }
-
-    protected async Task UpdateValue(bool value)
-    {
-        if (ValueChanged.HasDelegate)
-        {
-            await ValueChanged.InvokeAsync(value);
-        }
-        else
-        {
-            Value = value;
-        }
-    }
-
-    private async Task AddActivatorEvents()
-    {
-        if (Disabled || GetActivator() == null) return;
-
-        _focusListeners = GenActivatorFocusListeners();
-
-        _mouseListeners = GenActivatorMouseListeners();
-
-        _keyboardListeners = GenActivatorKeyboardListeners();
-
-        foreach (var (key, (listener, actions)) in _mouseListeners)
-        {
-            await ActivatorElement.AddEventListenerAsync(key, listener, false, actions);
-        }
-
-        foreach (var (key, value) in _focusListeners)
-        {
-            await ActivatorElement.AddEventListenerAsync(key, value, false);
-        }
-
-        foreach (var (key, value) in _keyboardListeners)
-        {
-            await ActivatorElement.AddEventListenerAsync(key, value, false);
-        }
-    }
-
     private Dictionary<string, object> GenActivatorAttributes()
     {
         return new Dictionary<string, object>
@@ -173,74 +98,24 @@ public abstract class BActivatable : BDelayable, IActivatable
         };
     }
 
-    protected virtual Dictionary<string, (EventCallback<MouseEventArgs> listener, EventListenerActions actions)> GenActivatorMouseListeners()
+    protected override void OnInitialized()
     {
-        Dictionary<string, (EventCallback<MouseEventArgs>, EventListenerActions)> listeners = new();
+        base.OnInitialized();
 
-        if (Disabled) return listeners;
-
-        if (OpenOnHover)
-        {
-            listeners.Add("mouseenter", (CreateEventCallback<MouseEventArgs>(_ => Open()), null));
-
-            listeners.Add("mouseleave", (CreateEventCallback<MouseEventArgs>(_ => Close()), null));
-        }
-        else
-        {
-            listeners.Add("click", (CreateEventCallback<MouseEventArgs>(async _ =>
+        Watcher
+            .Watch<bool>(nameof(Disabled), val =>
             {
-                await JsInvokeAsync(JsInteropConstants.Focus, ActivatorSelector);
-                await Toggle();
-            }), new EventListenerActions(true)));
-        }
-
-        return listeners;
+                //Review:
+                _ = ResetActivator();
+            });
     }
 
-    protected virtual Dictionary<string, EventCallback<FocusEventArgs>> GenActivatorFocusListeners()
+    private async Task ResetActivator()
     {
-        Dictionary<string, EventCallback<FocusEventArgs>> listeners = new();
-
-        if (Disabled || !OpenOnFocus) return listeners;
-
-        listeners.Add("focus", CreateEventCallback<FocusEventArgs>(_ => Open()));
-
-        listeners.Add("blur", CreateEventCallback<FocusEventArgs>(_ => Close()));
-
-        return listeners;
-    }
-
-    protected virtual Dictionary<string, EventCallback<KeyboardEventArgs>> GenActivatorKeyboardListeners()
-    {
-        Dictionary<string, EventCallback<KeyboardEventArgs>> listeners = new();
-
-        if (Disabled) return listeners;
-
-        listeners.Add("keydown", CreateEventCallback<KeyboardEventArgs>(async args =>
-        {
-            if (args.Key == "Escape")
-            {
-                await Close();
-            }
-        }));
-
-        return listeners;
-    }
-
-    protected HtmlElement GetActivator()
-    {
-        if (ActivatorElement != null) return ActivatorElement;
-
-        if (ActivatorContent != null)
-        {
-            ActivatorElement = Document.QuerySelector(InternalActivatorSelector);
-        }
-        else if (_externalActivatorRef != null)
-        {
-            ActivatorElement = Document.GetElementByReference(_externalActivatorRef.Value);
-        }
-
-        return ActivatorElement;
+        await RemoveActivatorEvents();
+        ActivatorElement = null;
+        GetActivator();
+        await AddActivatorEvents();
     }
 
     private async Task RemoveActivatorEvents()
@@ -267,17 +142,143 @@ public abstract class BActivatable : BDelayable, IActivatable
         _keyboardListeners.Clear();
     }
 
+    protected HtmlElement GetActivator()
+    {
+        if (ActivatorElement != null) return ActivatorElement;
+
+        if (ActivatorContent != null)
+        {
+            ActivatorElement = Document.QuerySelector(InternalActivatorSelector);
+        }
+        else if (_externalActivatorRef != null)
+        {
+            ActivatorElement = Document.GetElementByReference(_externalActivatorRef.Value);
+        }
+
+        return ActivatorElement;
+    }
+
+    private async Task AddActivatorEvents()
+    {
+        if (Disabled || GetActivator() == null) return;
+
+        _focusListeners = GenActivatorFocusListeners();
+        _mouseListeners = GenActivatorMouseListeners();
+        _keyboardListeners = GenActivatorKeyboardListeners();
+
+        foreach (var (key, (listener, actions)) in _mouseListeners)
+        {
+            await ActivatorElement.AddEventListenerAsync(key, listener, false, actions);
+        }
+
+        foreach (var (key, value) in _focusListeners)
+        {
+            await ActivatorElement.AddEventListenerAsync(key, value, false);
+        }
+
+        foreach (var (key, value) in _keyboardListeners)
+        {
+            await ActivatorElement.AddEventListenerAsync(key, value, false);
+        }
+    }
+
+    protected virtual Dictionary<string, EventCallback<FocusEventArgs>> GenActivatorFocusListeners()
+    {
+        Dictionary<string, EventCallback<FocusEventArgs>> listeners = new();
+
+        if (Disabled || !OpenOnFocus) return listeners;
+
+        listeners.Add("focus", CreateEventCallback<FocusEventArgs>(_ => Open()));
+
+        listeners.Add("blur", CreateEventCallback<FocusEventArgs>(_ => Close()));
+
+        return listeners;
+    }
+
+    protected virtual async Task Open()
+    {
+        await RunOpenDelayAsync(() => UpdateValue(true));
+    }
+
+    protected async Task UpdateValue(bool value)
+    {
+        if (ValueChanged.HasDelegate)
+        {
+            await ValueChanged.InvokeAsync(value);
+        }
+        else
+        {
+            Value = value;
+        }
+    }
+
+    protected virtual async Task Close()
+    {
+        await RunCloseDelayAsync(() => UpdateValue(false));
+    }
+
+    protected virtual Dictionary<string, (EventCallback<MouseEventArgs> listener, EventListenerActions actions)> GenActivatorMouseListeners()
+    {
+        Dictionary<string, (EventCallback<MouseEventArgs>, EventListenerActions)> listeners = new();
+
+        if (Disabled) return listeners;
+
+        if (OpenOnHover)
+        {
+            listeners.Add("mouseenter", (CreateEventCallback<MouseEventArgs>(_ => Open()), null));
+
+            listeners.Add("mouseleave", (CreateEventCallback<MouseEventArgs>(_ => Close()), null));
+        }
+        else
+        {
+            listeners.Add("click", (CreateEventCallback<MouseEventArgs>(async _ =>
+            {
+                await JsInvokeAsync(JsInteropConstants.Focus, ActivatorSelector);
+                await Toggle();
+            }), new EventListenerActions(true)));
+        }
+
+        return listeners;
+    }
+
+    protected virtual Task Toggle()
+    {
+        return UpdateValue(!Value);
+    }
+
+    protected virtual Dictionary<string, EventCallback<KeyboardEventArgs>> GenActivatorKeyboardListeners()
+    {
+        Dictionary<string, EventCallback<KeyboardEventArgs>> listeners = new();
+
+        if (Disabled) return listeners;
+
+        listeners.Add("keydown", CreateEventCallback<KeyboardEventArgs>(async args =>
+        {
+            if (args.Key == "Escape")
+            {
+                await Close();
+            }
+        }));
+
+        return listeners;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await ResetActivator();
+        }
+    }
+
+    /// <summary>
+    /// Use to set activator
+    /// </summary>
+    /// <param name="el"></param>
+    /// <returns></returns>
     public async Task UpdateActivator(ElementReference el)
     {
         _externalActivatorRef = el;
         await ResetActivator();
-    }
-
-    private async Task ResetActivator()
-    {
-        await RemoveActivatorEvents();
-        ActivatorElement = null;
-        GetActivator();
-        await AddActivatorEvents();
     }
 }

@@ -15,59 +15,6 @@ namespace BlazorComponent
         private readonly int _defaultOffset = 8;
         private readonly List<IDependent> _dependents = new();
 
-        protected string CalculatedLeft
-        {
-            get
-            {
-                var menuWidth = Math.Max(Dimensions.content.Width, NumberHelper.ParseDouble(CalculatedMinWidth));
-
-                if (!Auto) return CalcLeft(menuWidth) ?? "0";
-
-                return ((StringNumber)CalcXOverflow(CalcLeftAuto(), menuWidth)).ConvertToUnit() ?? "0";
-            }
-        }
-
-        protected string CalculatedMaxHeight => Auto ? "200px" : MaxHeight.ConvertToUnit();
-
-        protected string CalculatedMaxWidth => MaxWidth.ConvertToUnit();
-
-        protected string CalculatedMinWidth
-        {
-            get
-            {
-                if (MinWidth != null)
-                {
-                    return MinWidth.ConvertToUnit();
-                }
-
-                var nudgeWidth = 0d;
-                if (NudgeWidth != null)
-                {
-                    (_, nudgeWidth) = NudgeWidth.TryGetNumber();
-                }
-
-                var minWidth = Math.Min(
-                    Dimensions.activator.Width + nudgeWidth + (Auto ? 16 : 0),
-                    Math.Max(PageWidth - 24, 0));
-
-                double calculatedMaxWidth;
-                if (NumberHelper.TryParseDouble(CalculatedMaxWidth, out var value))
-                {
-                    calculatedMaxWidth = value;
-                }
-                else
-                {
-                    calculatedMaxWidth = minWidth;
-                }
-
-                return ((StringNumber)Math.Min(calculatedMaxWidth, minWidth)).ConvertToUnit();
-            }
-        }
-
-        protected string CalculatedTop => !Auto
-            ? CalcTop()
-            : ((StringNumber)CalcYOverflow(CalcTopAuto())).ConvertToUnit();
-
         [Parameter]
         public bool Auto { get; set; }
 
@@ -149,6 +96,69 @@ namespace BlazorComponent
             }
         }
 
+        protected string CalculatedLeft
+        {
+            get
+            {
+                var menuWidth = Math.Max(Dimensions.content.Width, NumberHelper.ParseDouble(CalculatedMinWidth));
+
+                if (!Auto) return CalcLeft(menuWidth) ?? "0";
+
+                return ((StringNumber)CalcXOverflow(CalcLeftAuto(), menuWidth)).ConvertToUnit() ?? "0";
+            }
+        }
+
+        protected string CalculatedMaxHeight => Auto ? "200px" : MaxHeight.ConvertToUnit();
+
+        protected string CalculatedMaxWidth => MaxWidth.ConvertToUnit();
+
+        protected string CalculatedMinWidth
+        {
+            get
+            {
+                if (MinWidth != null)
+                {
+                    return MinWidth.ConvertToUnit();
+                }
+
+                var nudgeWidth = 0d;
+                if (NudgeWidth != null)
+                {
+                    (_, nudgeWidth) = NudgeWidth.TryGetNumber();
+                }
+
+                var minWidth = Math.Min(
+                    Dimensions.activator.Width + nudgeWidth + (Auto ? 16 : 0),
+                    Math.Max(PageWidth - 24, 0));
+
+                double calculatedMaxWidth;
+                if (NumberHelper.TryParseDouble(CalculatedMaxWidth, out var value))
+                {
+                    calculatedMaxWidth = value;
+                }
+                else
+                {
+                    calculatedMaxWidth = minWidth;
+                }
+
+                return ((StringNumber)Math.Min(calculatedMaxWidth, minWidth)).ConvertToUnit();
+            }
+        }
+
+        protected string CalculatedTop => !Auto
+            ? CalcTop()
+            : ((StringNumber)CalcYOverflow(CalcTopAuto())).ConvertToUnit();
+
+        protected string CalcLeft(double menuWidth)
+        {
+            return ((StringNumber)(Attach != null ? ComputedLeft : CalcXOverflow(ComputedLeft, menuWidth))).ConvertToUnit();
+        }
+
+        protected string CalcTop()
+        {
+            return ((StringNumber)(Attach != null ? ComputedTop : CalcYOverflow(ComputedTop))).ConvertToUnit();
+        }
+
         protected override void OnInitialized()
         {
             base.OnInitialized();
@@ -182,6 +192,17 @@ namespace BlazorComponent
                     false,
                     new EventListenerActions(Document.GetElementByReference(ContentRef).Selector));
             }
+        }
+
+        private async Task OutsideClick(object _)
+        {
+            if (!Value || !CloseOnClick) return;
+
+            await OnOutsideClick.InvokeAsync();
+
+            await UpdateValue(false);
+
+            await InvokeStateHasChangedAsync();
         }
 
         protected override Task Activate(Action lazySetter)
@@ -269,17 +290,6 @@ namespace BlazorComponent
         private double CalcLeftAuto()
         {
             return Dimensions.activator.Left - _defaultOffset * 2;
-        }
-
-        private async Task OutsideClick(object _)
-        {
-            if (!Value || !CloseOnClick) return;
-
-            await OnOutsideClick.InvokeAsync();
-
-            await UpdateValue(false);
-
-            await InvokeStateHasChangedAsync();
         }
 
         protected override Task MoveContentTo()
