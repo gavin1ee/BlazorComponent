@@ -11,6 +11,9 @@ namespace BlazorComponent
     [EventHandler("onexclick", typeof(ExMouseEventArgs), true, true)]
     [EventHandler("onexmouseleave", typeof(ExMouseEventArgs), true, true)]
     [EventHandler("onexmouseenter", typeof(ExMouseEventArgs), true, true)]
+    [EventHandler("onexfocus", typeof(FocusEventArgs), true, true)]
+    [EventHandler("onexblur", typeof(FocusEventArgs), true, true)]
+    [EventHandler("onexkeydown", typeof(KeyboardEventArgs), true, true)]
     public static class EventHandlers
     {
     }

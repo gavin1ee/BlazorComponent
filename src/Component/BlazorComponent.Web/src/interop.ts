@@ -1192,6 +1192,9 @@ window.onload = function () {
     registerCustomEvent("exmouseleave", "mouseleave");
     registerCustomEvent("exmouseenter", "mouseenter");
     registerCustomEvent("exmousemove", "mousemove");
+    registerCustomEvent("exfocus", "focus");
+    registerCustomEvent("exblur", "blur");
+    registerCustomEvent("exkeydown", "keydown");
     registerDirective();
 }
 

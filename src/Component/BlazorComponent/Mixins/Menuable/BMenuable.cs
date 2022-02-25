@@ -462,12 +462,12 @@ public abstract class BMenuable : BActivatable, IMenuable, IAsyncDisposable
     {
         var listeners = base.GenActivatorMouseListeners();
 
-        if (listeners.ContainsKey("click"))
+        if (listeners.ContainsKey("onexclick"))
         {
-            var onClick = listeners["click"].listener;
-            var actions = listeners["click"].actions;
+            var onClick = listeners["onexclick"].listener;
+            var actions = listeners["onexclick"].actions;
 
-            listeners["click"] = (CreateEventCallback<MouseEventArgs>(async e =>
+            listeners["onexclick"] = (CreateEventCallback<MouseEventArgs>(async e =>
             {
                 _internalListenerEvent = InternalListenerEvent.Click;
 
@@ -485,10 +485,10 @@ public abstract class BMenuable : BActivatable, IMenuable, IAsyncDisposable
 
         ResetListener(ref listeners, InternalListenerEvent.Mouseenter, (e) => ShowLazyContent());
 
-        if (listeners.ContainsKey("mouseleave"))
+        if (listeners.ContainsKey("onexmouseleave"))
         {
-            var cb = listeners["mouseleave"].listener;
-            var actions = listeners["mouseleave"].actions;
+            var cb = listeners["onexmouseleave"].listener;
+            var actions = listeners["onexmouseleave"].actions;
 
             // ContentRef is null if use the feature ShowLazyContent
             if (ContentRef.Context != null)
@@ -503,7 +503,7 @@ public abstract class BMenuable : BActivatable, IMenuable, IAsyncDisposable
                 }
             }
 
-            listeners["mouseleave"] = (CreateEventCallback<MouseEventArgs>(async e =>
+            listeners["onexmouseleave"] = (CreateEventCallback<MouseEventArgs>(async e =>
             {
                 while (!_showContentCompleted)
                 {

@@ -89,7 +89,7 @@ public abstract class BActivatable : BDelayable, IActivatable
 
     private Dictionary<string, object> GenActivatorAttributes()
     {
-        return new Dictionary<string, object>
+        return new Dictionary<string, object>(ActivatorEvents)
         {
             {_activatorId, true},
             {"role", "button"},
@@ -98,6 +98,8 @@ public abstract class BActivatable : BDelayable, IActivatable
         };
     }
 
+    public Dictionary<string, object> ActivatorEvents { get; protected set; } = new();
+
     protected override void OnInitialized()
     {
         base.OnInitialized();
@@ -105,37 +107,26 @@ public abstract class BActivatable : BDelayable, IActivatable
         Watcher
             .Watch<bool>(nameof(Disabled), val =>
             {
-                //Review:
-                _ = ResetActivator();
+                ResetActivator();
             });
+
+        ResetActivator();
     }
 
-    private async Task ResetActivator()
+    private void ResetActivator()
     {
-        await RemoveActivatorEvents();
+        RemoveActivatorEvents();
         ActivatorElement = null;
         GetActivator();
-        await AddActivatorEvents();
+        AddActivatorEvents();
     }
 
-    private async Task RemoveActivatorEvents()
+    private void RemoveActivatorEvents()
     {
         if (ActivatorElement == null) return;
 
-        foreach (var (key, _) in _mouseListeners)
-        {
-            await ActivatorElement.RemoveEventListenerAsync(key);
-        }
-
-        foreach (var (key, _) in _focusListeners)
-        {
-            await ActivatorElement.RemoveEventListenerAsync(key);
-        }
-
-        foreach (var (key, _) in _keyboardListeners)
-        {
-            await ActivatorElement.RemoveEventListenerAsync(key);
-        }
+        //Empty events
+        ActivatorEvents.Clear();
 
         _mouseListeners.Clear();
         _focusListeners.Clear();
@@ -158,27 +149,40 @@ public abstract class BActivatable : BDelayable, IActivatable
         return ActivatorElement;
     }
 
-    private async Task AddActivatorEvents()
+    private void AddActivatorEvents()
     {
         if (Disabled || GetActivator() == null) return;
 
-        _focusListeners = GenActivatorFocusListeners();
         _mouseListeners = GenActivatorMouseListeners();
+        _focusListeners = GenActivatorFocusListeners();
         _keyboardListeners = GenActivatorKeyboardListeners();
 
         foreach (var (key, (listener, actions)) in _mouseListeners)
         {
-            await ActivatorElement.AddEventListenerAsync(key, listener, false, actions);
+            ActivatorEvents.Add(key, listener);
+
+            if (actions != null)
+            {
+                if (actions.StopPropagation)
+                {
+                    ActivatorEvents.Add("__internal_stopPropagation_" + key, true);
+                }
+
+                if (actions.PreventDefault)
+                {
+                    ActivatorEvents.Add("__internal_preventDefault_" + key, true);
+                }
+            }
         }
 
-        foreach (var (key, value) in _focusListeners)
+        foreach (var (key, listener) in _focusListeners)
         {
-            await ActivatorElement.AddEventListenerAsync(key, value, false);
+            ActivatorEvents.Add(key, listener);
         }
 
-        foreach (var (key, value) in _keyboardListeners)
+        foreach (var (key, listener) in _keyboardListeners)
         {
-            await ActivatorElement.AddEventListenerAsync(key, value, false);
+            ActivatorEvents.Add(key, listener);
         }
     }
 
@@ -188,9 +192,9 @@ public abstract class BActivatable : BDelayable, IActivatable
 
         if (Disabled || !OpenOnFocus) return listeners;
 
-        listeners.Add("focus", CreateEventCallback<FocusEventArgs>(_ => Open()));
+        listeners.Add("onexfocus", CreateEventCallback<FocusEventArgs>(_ => Open()));
 
-        listeners.Add("blur", CreateEventCallback<FocusEventArgs>(_ => Close()));
+        listeners.Add("onexblur", CreateEventCallback<FocusEventArgs>(_ => Close()));
 
         return listeners;
     }
@@ -225,13 +229,12 @@ public abstract class BActivatable : BDelayable, IActivatable
 
         if (OpenOnHover)
         {
-            listeners.Add("mouseenter", (CreateEventCallback<MouseEventArgs>(_ => Open()), null));
-
-            listeners.Add("mouseleave", (CreateEventCallback<MouseEventArgs>(_ => Close()), null));
+            listeners.Add("onexmouseenter", (CreateEventCallback<MouseEventArgs>(_ => Open()), null));
+            listeners.Add("onexmouseleave", (CreateEventCallback<MouseEventArgs>(_ => Close()), null));
         }
         else
         {
-            listeners.Add("click", (CreateEventCallback<MouseEventArgs>(async _ =>
+            listeners.Add("onexclick", (CreateEventCallback<MouseEventArgs>(async _ =>
             {
                 await JsInvokeAsync(JsInteropConstants.Focus, ActivatorSelector);
                 await Toggle();
@@ -252,7 +255,7 @@ public abstract class BActivatable : BDelayable, IActivatable
 
         if (Disabled) return listeners;
 
-        listeners.Add("keydown", CreateEventCallback<KeyboardEventArgs>(async args =>
+        listeners.Add("onexkeydown", CreateEventCallback<KeyboardEventArgs>(async args =>
         {
             if (args.Key == "Escape")
             {
@@ -263,22 +266,14 @@ public abstract class BActivatable : BDelayable, IActivatable
         return listeners;
     }
 
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (firstRender)
-        {
-            await ResetActivator();
-        }
-    }
-
     /// <summary>
     /// Use to set activator
     /// </summary>
     /// <param name="el"></param>
     /// <returns></returns>
-    public async Task UpdateActivator(ElementReference el)
+    public void UpdateActivator(ElementReference el)
     {
         _externalActivatorRef = el;
-        await ResetActivator();
+        ResetActivator();
     }
 }
