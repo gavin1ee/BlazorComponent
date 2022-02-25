@@ -233,7 +233,6 @@ public abstract class BMenuable : BActivatable, IMenuable, IAsyncDisposable
 
         _windowAndDocument = await JsInvokeAsync<WindowAndDocument>(JsInteropConstants.GetWindowAndDocumentProps,
             windowProps, documentProps);
-
         return _windowAndDocument;
     }
 

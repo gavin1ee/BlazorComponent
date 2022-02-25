@@ -87,7 +87,7 @@ public abstract class BActivatable : BDelayable, IActivatable
         }
     }
 
-    private Dictionary<string, object> GenActivatorAttributes()
+    protected virtual Dictionary<string, object> GenActivatorAttributes()
     {
         return new Dictionary<string, object>(ActivatorEvents)
         {

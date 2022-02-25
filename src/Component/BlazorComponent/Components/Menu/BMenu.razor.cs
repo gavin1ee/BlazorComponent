@@ -81,6 +81,13 @@ namespace BlazorComponent
             }
         }
 
+        protected override Dictionary<string, object> GenActivatorAttributes()
+        {
+            var attrs = base.GenActivatorAttributes();
+            attrs.Add("close-conditional", CloseConditional());
+            return attrs;
+        }
+
         public IEnumerable<HtmlElement> DependentElements
         {
             get
@@ -182,7 +189,7 @@ namespace BlazorComponent
 
                 await JsInvokeAsync(JsInteropConstants.AddOutsideClickEventListener,
                     DotNetObjectReference.Create(new Invoker<object>(OutsideClick)),
-                    new[] { Document.GetElementByReference(ContentRef).Selector, ActivatorSelector });
+                    new[] { Document.GetElementByReference(ContentRef).Selector, ActivatorSelector }, null, ActivatorSelector);
             }
             else
             {
@@ -196,13 +203,18 @@ namespace BlazorComponent
 
         private async Task OutsideClick(object _)
         {
-            if (!Value || !CloseOnClick) return;
+            if (!CloseConditional()) return;
 
             await OnOutsideClick.InvokeAsync();
 
             await UpdateValue(false);
 
             await InvokeStateHasChangedAsync();
+        }
+
+        private bool CloseConditional()
+        {
+            return Value && CloseOnClick;
         }
 
         protected override Task Activate(Action lazySetter)

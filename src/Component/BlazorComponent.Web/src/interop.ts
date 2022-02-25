@@ -471,7 +471,7 @@ export function removeHtmlElementEventListener(selector, type) {
 
 var outsideClickListenerCaches: { [key: string]: any } = {}
 
-export function addOutsideClickEventListener(invoker, noInvokeSelectors: [], invokeSelectors: []) {
+export function addOutsideClickEventListener(invoker, noInvokeSelectors: [], invokeSelectors: [], activator) {
     if (!noInvokeSelectors) return;
 
     var listener = function (args) {
@@ -483,7 +483,10 @@ export function addOutsideClickEventListener(invoker, noInvokeSelectors: [], inv
                 invoker.invokeMethodAsync("Invoke", {});
             }
         } else {
-            invoker.invokeMethodAsync("Invoke", {});
+            var activatorElement: HTMLElement = document.querySelector(activator);
+            if (activatorElement.attributes['close-conditional']) {
+                invoker.invokeMethodAsync("Invoke", {});
+            }
         }
     }
 
@@ -725,15 +728,15 @@ export function getWindow() {
 
 export function getWindowAndDocumentProps(windowProps: string[] = [], documentProps: string[] = []) {
     const obj = {}
-    
+
     if (windowProps) {
         windowProps.forEach(prop => obj[prop] = window[prop]);
     }
-    
+
     if (documentProps) {
         documentProps.forEach(prop => obj[prop] = document.documentElement[prop]);
     }
-    
+
     return obj
 }
 

@@ -14,6 +14,7 @@ namespace BlazorComponent
     [EventHandler("onexfocus", typeof(FocusEventArgs), true, true)]
     [EventHandler("onexblur", typeof(FocusEventArgs), true, true)]
     [EventHandler("onexkeydown", typeof(KeyboardEventArgs), true, true)]
+    [EventHandler("onoutsideclick", typeof(MouseEventArgs), true, true)]
     public static class EventHandlers
     {
     }
