@@ -14,8 +14,6 @@ namespace BlazorComponent
 
         public bool ShowContent => Component.ShowContent;
 
-        public bool Value => Component.Value;
-
         protected async Task HandleOnKeyDown(KeyboardEventArgs args)
         {
             await Component.Keydown(args);

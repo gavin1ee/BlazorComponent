@@ -6,5 +6,5 @@ public interface IActivatable
 {
     public RenderFragment ComputedActivatorContent { get; }
     
-    public bool Value { get; }
+    public bool IsActive { get; }
 }

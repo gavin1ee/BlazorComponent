@@ -24,14 +24,14 @@ namespace BlazorComponent
                 }
                 else
                 {
-                    return Value ? "scale-transition" : "fade-transition";
+                    return IsActive ? "scale-transition" : "fade-transition";
                 }
             }
         }
 
-        public bool Value => Component.Value;
+        public bool IsActive => Component.IsActive;
 
-        public bool ShowContent => Component.ShowContent;
+        public bool Booted => Component.Booted;
 
         public string Transition => Component.Transition;
 

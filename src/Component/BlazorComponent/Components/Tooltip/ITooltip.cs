@@ -9,5 +9,7 @@ namespace BlazorComponent
         string Transition { get; }
 
         RenderFragment ChildContent { get; }
+
+        bool Booted { get; }
     }
 }

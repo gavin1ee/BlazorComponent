@@ -81,7 +81,7 @@ namespace BlazorComponent
             }
         }
 
-        protected override Dictionary<string, object> GenActivatorAttributes()
+        public override Dictionary<string, object> GenActivatorAttributes()
         {
             var attrs = base.GenActivatorAttributes();
             attrs.Add("close-conditional", CloseConditional());
@@ -193,6 +193,7 @@ namespace BlazorComponent
             }
             else
             {
+                //REVIEW:
                 await ActivatorElement.AddEventListenerAsync(
                     "mouseleave",
                     CreateEventCallback<MouseEventArgs>(_ => Close()),
@@ -206,15 +207,13 @@ namespace BlazorComponent
             if (!CloseConditional()) return;
 
             await OnOutsideClick.InvokeAsync();
-
-            await UpdateValue(false);
-
+            IsActive = false;
             await InvokeStateHasChangedAsync();
         }
 
         private bool CloseConditional()
         {
-            return Value && CloseOnClick;
+            return IsActive && CloseOnClick;
         }
 
         protected override Task Activate(Action lazySetter)
@@ -248,12 +247,12 @@ namespace BlazorComponent
             return listeners;
         }
 
-        protected virtual async void OnContentClick(MouseEventArgs args)
+        protected virtual void OnContentClick(MouseEventArgs args)
         {
             // TODO: if clicked element attribute contains 'disabled', return
             if (CloseOnContentClick)
             {
-                await UpdateValue(false);
+                IsActive = false;
             }
             else
             {
@@ -261,13 +260,11 @@ namespace BlazorComponent
             }
         }
 
-        protected virtual async void OnContentMouseenter(MouseEventArgs args)
+        protected virtual void OnContentMouseenter(MouseEventArgs args)
         {
             if (!Disabled && OpenOnHover)
             {
-                if (Value) await Task.CompletedTask;
-
-                await UpdateValue(true);
+                IsActive = true;
             }
             else
             {
@@ -275,11 +272,11 @@ namespace BlazorComponent
             }
         }
 
-        protected virtual async void OnContentMouseleave(MouseEventArgs args)
+        protected virtual void OnContentMouseleave(MouseEventArgs args)
         {
             if (OpenOnHover)
             {
-                await UpdateValue(false);
+                IsActive = false;
             }
             else
             {

@@ -7,12 +7,8 @@ namespace BlazorComponent;
 public abstract class BMenuable : BActivatable, IMenuable, IAsyncDisposable
 {
     private readonly int _stackMinZIndex = 6;
-    private bool _delayIsActive;
     private double _absoluteX;
     private double _absoluteY;
-    // just record the last triggered event
-    private InternalListenerEvent _internalListenerEvent = InternalListenerEvent.None;
-    private bool _showContentCompleted;
     private bool _hasWindow;
     private WindowAndDocument _windowAndDocument;
 
@@ -82,18 +78,45 @@ public abstract class BMenuable : BActivatable, IMenuable, IAsyncDisposable
     [Parameter]
     public override bool Value
     {
-        get => IsActive;
+        get
+        {
+            return GetValue<bool>();
+        }
         set
         {
-            //We recover this as no activator mode need
-            //We will remove this when menuable been refactored
-            _ = ShowLazyContent();
-            IsActive = value;
+            SetValue(value);
         }
     }
 
     [Parameter]
     public StringNumber ZIndex { get; set; }
+
+    public override bool IsActive
+    {
+        get
+        {
+            return GetValue<bool>();
+        }
+        set
+        {
+            if (value && !Booted)
+            {
+                Booted = true;
+
+                NextTick(async () =>
+                {
+                    await ShowLazyContent();
+
+                    SetValue(value);
+                    StateHasChanged();
+                });
+            }
+            else
+            {
+                SetValue(value);
+            }
+        }
+    }
 
     [Inject]
     public DomEventJsInterop DomEventJsInterop { get; set; }
@@ -185,21 +208,6 @@ public abstract class BMenuable : BActivatable, IMenuable, IAsyncDisposable
 
     protected int InternalZIndex { get; set; }
 
-    protected override bool IsActive
-    {
-        get => _delayIsActive;
-        set
-        {
-            if (Disabled) return;
-
-            if (_delayIsActive == value) return;
-
-            _ = value
-                ? CallActivate(() => _delayIsActive = true)
-                : CallDeactivate(() => _delayIsActive = false);
-        }
-    }
-
     protected double PageYOffset { get; set; }
 
     protected double PageWidth { get; set; }
@@ -209,6 +217,26 @@ public abstract class BMenuable : BActivatable, IMenuable, IAsyncDisposable
     public bool ShowContent { get; set; }
 
     public virtual string AttachedSelector => Attach;
+
+    protected bool Booted { get; set; }
+
+    protected override void OnWatcherInitialized()
+    {
+        base.OnWatcherInitialized();
+
+        Watcher
+            .Watch<bool>(nameof(IsActive), val =>
+            {
+                //REVIEW:
+                if (Booted && val && Absolute)
+                {
+                    NextTick(async () =>
+                    {
+                        await UpdateDimensions();
+                    });
+                }
+            });
+    }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -236,30 +264,17 @@ public abstract class BMenuable : BActivatable, IMenuable, IAsyncDisposable
         return _windowAndDocument;
     }
 
-    private async void OnResize(Window window)
+    private void OnResize(Window window)
     {
         if (!IsActive) return;
-
-        await Task.Run(() => UpdateDimensions());
+        _ = InvokeAsync(() => UpdateDimensions());
     }
 
     protected virtual async Task ShowLazyContent()
     {
-        if (!ShowContent)
-        {
-            _showContentCompleted = false;
-
-            ShowContent = true;
-
-            StateHasChanged();
-            await Task.Delay(BROWSER_RENDER_INTERVAL);
-
-            await AfterShowContent();
-            await MoveContentTo();
-            await UpdateDimensions();
-
-            _showContentCompleted = true;
-        }
+        await AfterShowContent();
+        await MoveContentTo();
+        await UpdateDimensions();
     }
 
     protected virtual Task AfterShowContent()
@@ -303,7 +318,6 @@ public abstract class BMenuable : BActivatable, IMenuable, IAsyncDisposable
         Dimensions.content = await Measure(contentElement);
 
         lazySetter?.Invoke();
-
         InternalZIndex = await CalculateZIndex();
 
         StateHasChanged();
@@ -468,10 +482,6 @@ public abstract class BMenuable : BActivatable, IMenuable, IAsyncDisposable
 
             listeners["onexclick"] = (CreateEventCallback<MouseEventArgs>(async e =>
             {
-                _internalListenerEvent = InternalListenerEvent.Click;
-
-                await ShowLazyContent();
-
                 if (OpenOnClick && onClick.HasDelegate)
                 {
                     await onClick.InvokeAsync(e);
@@ -479,10 +489,11 @@ public abstract class BMenuable : BActivatable, IMenuable, IAsyncDisposable
 
                 _absoluteX = e.ClientX;
                 _absoluteY = e.ClientY;
+
+                //REVIEW:
+                await UpdateDimensions();
             }), actions);
         }
-
-        ResetListener(ref listeners, InternalListenerEvent.Mouseenter, (e) => ShowLazyContent());
 
         if (listeners.ContainsKey("onexmouseleave"))
         {
@@ -504,16 +515,6 @@ public abstract class BMenuable : BActivatable, IMenuable, IAsyncDisposable
 
             listeners["onexmouseleave"] = (CreateEventCallback<MouseEventArgs>(async e =>
             {
-                while (!_showContentCompleted)
-                {
-                    await Task.Delay(BROWSER_RENDER_INTERVAL);
-                }
-
-                while (_internalListenerEvent == InternalListenerEvent.Mouseenter && !Value)
-                {
-                    await Task.Delay(BROWSER_RENDER_INTERVAL);
-                }
-
                 if (cb.HasDelegate)
                 {
                     await cb.InvokeAsync(e);
@@ -522,34 +523,6 @@ public abstract class BMenuable : BActivatable, IMenuable, IAsyncDisposable
         }
 
         return listeners;
-    }
-
-    private void ResetListener<T>(
-        ref Dictionary<string, (EventCallback<T> listener, EventListenerActions actions)> listeners,
-        InternalListenerEvent @event,
-        Func<T, Task> beforeInvoke = null)
-    {
-        var type = @event.ToString().ToLower();
-
-        if (!listeners.ContainsKey(type)) return;
-
-        var cb = listeners[type].listener;
-        var actions = listeners[type].actions;
-
-        listeners[type] = (CreateEventCallback<T>(async e =>
-        {
-            if (beforeInvoke != null)
-            {
-                await beforeInvoke.Invoke(e);
-            }
-
-            _internalListenerEvent = @event;
-
-            if (cb.HasDelegate)
-            {
-                await cb.InvokeAsync(e);
-            }
-        }), actions);
     }
 
     protected override Dictionary<string, EventCallback<FocusEventArgs>> GenActivatorFocusListeners()
@@ -572,8 +545,6 @@ public abstract class BMenuable : BActivatable, IMenuable, IAsyncDisposable
 
         listeners[type] = CreateEventCallback<T>(async e =>
         {
-            _internalListenerEvent = @event;
-
             if (cb.HasDelegate)
             {
                 await cb.InvokeAsync(e);

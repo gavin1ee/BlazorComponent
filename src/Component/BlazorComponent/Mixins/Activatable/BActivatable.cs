@@ -12,7 +12,6 @@ namespace BlazorComponent;
 public abstract class BActivatable : BDelayable, IActivatable
 {
     private readonly string _activatorId;
-    private bool _isActive;
     private ElementReference? _externalActivatorRef;
     private Dictionary<string, EventCallback<FocusEventArgs>> _focusListeners = new();
     private Dictionary<string, EventCallback<KeyboardEventArgs>> _keyboardListeners = new();
@@ -42,8 +41,14 @@ public abstract class BActivatable : BDelayable, IActivatable
     [Parameter]
     public virtual bool Value
     {
-        get => IsActive;
-        set => IsActive = value;
+        get
+        {
+            return GetValue<bool>();
+        }
+        set
+        {
+            SetValue(value);
+        }
     }
 
     [Parameter]
@@ -60,14 +65,15 @@ public abstract class BActivatable : BDelayable, IActivatable
 
     protected HtmlElement ActivatorElement { get; private set; }
 
-    protected virtual bool IsActive
+    public virtual bool IsActive
     {
-        get => _isActive;
+        get
+        {
+            return GetValue<bool>();
+        }
         set
         {
-            if (Disabled) return;
-
-            _isActive = value;
+            SetValue(value);
         }
     }
 
@@ -87,7 +93,7 @@ public abstract class BActivatable : BDelayable, IActivatable
         }
     }
 
-    protected virtual Dictionary<string, object> GenActivatorAttributes()
+    public virtual Dictionary<string, object> GenActivatorAttributes()
     {
         return new Dictionary<string, object>(ActivatorEvents)
         {
@@ -99,6 +105,24 @@ public abstract class BActivatable : BDelayable, IActivatable
     }
 
     public Dictionary<string, object> ActivatorEvents { get; protected set; } = new();
+
+    protected override void OnWatcherInitialized()
+    {
+        Watcher
+            .Watch<bool>(nameof(Value), val =>
+            {
+                IsActive = val;
+            })
+            .Watch<bool>(nameof(IsActive), val =>
+            {
+                if (Disabled) return;
+
+                if (val != Value && ValueChanged.HasDelegate)
+                {
+                    _ = ValueChanged.InvokeAsync(val);
+                }
+            });
+    }
 
     protected override void OnInitialized()
     {
@@ -193,7 +217,6 @@ public abstract class BActivatable : BDelayable, IActivatable
         if (Disabled || !OpenOnFocus) return listeners;
 
         listeners.Add("onexfocus", CreateEventCallback<FocusEventArgs>(_ => Open()));
-
         listeners.Add("onexblur", CreateEventCallback<FocusEventArgs>(_ => Close()));
 
         return listeners;
@@ -201,24 +224,24 @@ public abstract class BActivatable : BDelayable, IActivatable
 
     protected virtual async Task Open()
     {
-        await RunOpenDelayAsync(() => UpdateValue(true));
-    }
+        await RunOpenDelayAsync(() =>
+        {
+            IsActive = true;
+            InvokeStateHasChanged();
 
-    protected async Task UpdateValue(bool value)
-    {
-        if (ValueChanged.HasDelegate)
-        {
-            await ValueChanged.InvokeAsync(value);
-        }
-        else
-        {
-            Value = value;
-        }
+            return Task.CompletedTask;
+        });
     }
 
     protected virtual async Task Close()
     {
-        await RunCloseDelayAsync(() => UpdateValue(false));
+        await RunCloseDelayAsync(() =>
+        {
+            IsActive = false;
+            InvokeStateHasChanged();
+
+            return Task.CompletedTask;
+        });
     }
 
     protected virtual Dictionary<string, (EventCallback<MouseEventArgs> listener, EventListenerActions actions)> GenActivatorMouseListeners()
@@ -237,16 +260,11 @@ public abstract class BActivatable : BDelayable, IActivatable
             listeners.Add("onexclick", (CreateEventCallback<MouseEventArgs>(async _ =>
             {
                 await JsInvokeAsync(JsInteropConstants.Focus, ActivatorSelector);
-                await Toggle();
+                IsActive = !IsActive;
             }), new EventListenerActions(true)));
         }
 
         return listeners;
-    }
-
-    protected virtual Task Toggle()
-    {
-        return UpdateValue(!Value);
     }
 
     protected virtual Dictionary<string, EventCallback<KeyboardEventArgs>> GenActivatorKeyboardListeners()

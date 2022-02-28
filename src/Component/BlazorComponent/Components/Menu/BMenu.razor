@@ -3,12 +3,12 @@
 
 @ComputedActivatorContent
 
-<div style="@CssProvider.GetStyle()" class="@CssProvider.GetClass()" @ref="Ref">
-    @if (ShowContent)
-    {
+@if (Booted)
+{
+    <div style="@CssProvider.GetStyle()" class="@CssProvider.GetClass()" @ref="Ref">
         <BCascadingValue Value="IsDark" Name="IsDark">
             <Transition Name="@Transition">
-                <Element Show="Value"
+                <Element Show="IsActive"
                      id="@Id"
                      style="@CssProvider.GetStyle("content")"
                      class="@CssProvider.GetClass("content")"
@@ -21,5 +21,5 @@
                 </Element>
             </Transition>
         </BCascadingValue>
-    }
-</div>
+    </div>
+}
