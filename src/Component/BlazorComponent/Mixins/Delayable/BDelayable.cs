@@ -1,46 +1,92 @@
 ﻿using Microsoft.AspNetCore.Components;
+using Microsoft.JSInterop;
 
 namespace BlazorComponent;
 
-public class BDelayable : BDomComponentBase
+public class BDelayable : BDomComponentBase, IAsyncDisposable
 {
-    private CancellationTokenSource _cancellationTokenSource;
+    [Parameter]
+    public int OpenDelay { get; set; }
 
     [Parameter]
-    public int OpenDelay { get; set; } = 10;
+    public int CloseDelay { get; set; }
 
-    [Parameter]
-    public int CloseDelay { get; set; } = 10;
+    private IJSObjectReference? _module;
+    private DotNetObjectReference<BDelayable> _dotNetRef;
 
-    public async Task RunOpenDelayAsync(Func<Task> cb = null)
+    protected bool IsActive { get; private set; }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        await InvokeAsync(async () =>
+        if (firstRender)
         {
-            _cancellationTokenSource?.Cancel();
-            _cancellationTokenSource = new CancellationTokenSource();
+            _dotNetRef = DotNetObjectReference.Create(this);
 
-            await Task.Delay(OpenDelay, _cancellationTokenSource.Token);
+            _module = await Js.InvokeAsync<IJSObjectReference>("import", "./_content/BlazorComponent/js/delayable.js");
+            await _module!.InvokeVoidAsync("init", _dotNetRef, OpenDelay, CloseDelay);
+        }
 
-            if (cb != null)
-            {
-                await cb.Invoke();
-            }
-        });
+        await base.OnAfterRenderAsync(firstRender);
     }
 
-    public async Task RunCloseDelayAsync(Func<Task> cb = null)
+    [JSInvokable]
+    public async Task SetActive(bool value)
     {
-        await InvokeAsync(async () =>
+        await OnActiveUpdating(value);
+        IsActive = value;
+        await OnActiveUpdated(value);
+        StateHasChanged();
+    }
+
+    protected virtual Task OnActiveUpdating(bool value)
+    {
+        return Task.CompletedTask;
+    }
+
+    protected virtual Task OnActiveUpdated(bool value)
+    {
+        return Task.CompletedTask;
+    }
+
+    protected async Task RunOpenDelayAsync()
+    {
+        if (_module is not null)
         {
-            _cancellationTokenSource?.Cancel();
-            _cancellationTokenSource = new CancellationTokenSource();
+            await _module.InvokeVoidAsync("runDelay", _dotNetRef, "open");
+        }
+        else
+        {
+            await SetActive(true);
+        }
+    }
 
-            await Task.Delay(CloseDelay, _cancellationTokenSource.Token);
+    protected async Task RunCloseDelayAsync()
+    {
+        if (_module is not null)
+        {
+            await _module.InvokeVoidAsync("runDelay", _dotNetRef, "close");
+        }
+        else
+        {
+            await SetActive(false);
+        }
+    }
 
-            if (cb != null)
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            if (_module is not null && _dotNetRef is not null)
             {
-                await cb.Invoke();
+                await _module.InvokeVoidAsync("remove", _dotNetRef);
+                await _module.DisposeAsync();
             }
-        });
+
+            _dotNetRef?.Dispose();
+        }
+        catch (Exception)
+        {
+            // ignored
+        }
     }
 }

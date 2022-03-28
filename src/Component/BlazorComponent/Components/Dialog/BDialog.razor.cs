@@ -88,21 +88,52 @@ namespace BlazorComponent
 
         protected bool Animated { get; set; }
 
-        protected override async Task OnIsActiveSettingAsync(bool isActive)
+        protected override async Task OnActiveUpdated(bool value)
+        {
+            if (ContentRef.Context is not null)
+            {
+                await AttachAsync(value);
+            }
+            else
+            {
+                NextTick(() => AttachAsync(value));
+            }
+
+            if (value)
+            {
+                NextTick(async () =>
+                {
+                    // TODO: previousActiveElement
+
+                    var contains = await JsInvokeAsync<bool>(JsInteropConstants.ContainsActiveElement, ContentRef);
+                    if (!contains)
+                    {
+                        await JsInvokeAsync(JsInteropConstants.Focus, ContentRef);
+                    }
+                });
+            }
+
+            await base.OnActiveUpdated(value);
+        }
+
+        private async Task AttachAsync(bool value)
         {
             if (!Attached)
             {
                 Attached = true;
 
                 await JsInvokeAsync(JsInteropConstants.AddOutsideClickEventListener,
-                DotNetObjectReference.Create(new Invoker<object>(HandleOnOutsideClickAsync)),
-                new[] { Document.GetElementByReference(DialogRef).Selector },
-                new[] { Document.GetElementByReference(OverlayRef!.Value).Selector });
+                    DotNetObjectReference.Create(new Invoker<object>(HandleOnOutsideClickAsync)),
+                    new[] { Document.GetElementByReference(DialogRef).Selector },
+                    new[] { Document.GetElementByReference(OverlayRef!.Value).Selector });
 
-                ZIndex = await GetActiveZIndex(isActive);
+                ZIndex = await GetActiveZIndex(value);
+
                 await JsInvokeAsync(JsInteropConstants.AddElementTo, OverlayRef, AttachSelector);
                 await JsInvokeAsync(JsInteropConstants.AddElementTo, ContentRef, AttachSelector);
             }
+
+            StateHasChanged();
         }
 
         protected async Task HandleOnOutsideClickAsync(object _)
@@ -114,21 +145,7 @@ namespace BlazorComponent
                 await OnOutsideClick.InvokeAsync();
             }
 
-            if (Persistent)
-            {
-                Animated = true;
-                NextTick(async () =>
-                {
-                    //This animated need 150ms
-                    await Task.Delay(150);
-                    Animated = false;
-                    StateHasChanged();
-                });
-            }
-            else
-            {
-                await SetIsActiveAsync(false);
-            }
+            await CloseAsync();
 
             await InvokeStateHasChangedAsync();
         }
@@ -150,6 +167,34 @@ namespace BlazorComponent
             return maxZindex > StackMinZIndex ? maxZindex : StackMinZIndex;
         }
 
+        public async Task Keydown(KeyboardEventArgs args)
+        {
+            if (args.Key == "Escape")
+            {
+                await CloseAsync();
+            }
+        }
+
+        protected async Task CloseAsync()
+        {
+            if (Persistent)
+            {
+                Animated = true;
+                StateHasChanged();
+                NextTick(async () =>
+                {
+                    //This animated need 150ms
+                    await Task.Delay(150);
+                    Animated = false;
+                    StateHasChanged();
+                });
+            }
+            else
+            {
+                await RunCloseDelayAsync();
+            }
+        }
+
         public async ValueTask DisposeAsync()
         {
             await DeleteContent();
@@ -169,7 +214,7 @@ namespace BlazorComponent
                     await JsInvokeAsync(JsInteropConstants.DelElementFrom, OverlayRef, AttachSelector);
                 }
             }
-            catch (Exception e)
+            catch (Exception)
             {
                 // ignored
             }
