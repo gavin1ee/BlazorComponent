@@ -47,6 +47,7 @@ namespace BlazorComponent
         {
             throw new NotImplementedException();
         }
+
         public virtual Task SetContentAsync()
         {
             throw new NotImplementedException();
