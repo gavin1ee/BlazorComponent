@@ -38,9 +38,9 @@
             }
         }
 
-        protected List<BDragItem> Items { get; set; } = new();
+        public List<BDragItem> Items { get; protected set; } = new();
 
-        protected List<BDragItem> DynicItems { get; set; } = new();        
+        public List<BDragItem> DynicItems { get; protected set; } = new();
 
         public void Register(BDragItem item)
         {
