@@ -590,6 +590,10 @@ export function focus(selector, noScroll: boolean = false) {
   })
 }
 
+export function test(){
+  console.log('test')
+}
+
 export function select(selector) {
   let dom = getDom(selector);
   if (!(dom instanceof HTMLInputElement || dom instanceof HTMLTextAreaElement))
